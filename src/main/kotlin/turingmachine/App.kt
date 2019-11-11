@@ -9,7 +9,7 @@ fun main(args: Array<String>) {
     val tmParser = TMSpecParser()
     val blockFinder = tmParser.parse(inputString)
 
-    blockFinder.tape.inputCharacters(5, "abbabb".toCharArray().toTypedArray())
+    blockFinder.tape.inputCharacters(-9, "abbabb".toCharArray().toTypedArray())
 
     while (!blockFinder.isFinished()) {
         println("Instruction: ${blockFinder.lastInstruction}")

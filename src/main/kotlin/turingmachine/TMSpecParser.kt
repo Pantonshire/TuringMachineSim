@@ -17,10 +17,11 @@ class TMSpecParser {
         const val TRANSITION_SEPARATOR_TOKEN = ","
         const val BLOCK_OPEN_TOKEN = '{'
         const val BLOCK_CLOSE_TOKEN = '}'
+        const val COMMENT_TOKEN = "//"
     }
 
     fun parse(specification: String): TuringMachine<String> {
-        val lines = specification.split(Regex("\n+")).map { line -> line.trim() }.filter { line -> line.isNotEmpty() }
+        val lines = specification.split(Regex("\n+")).map { line -> line.trim() }
 
         var initialState: String? = null
         var initialHeadPos: Int? = null
@@ -29,77 +30,87 @@ class TMSpecParser {
 
         lines.forEachIndexed {
             index, line ->
-            val lineNo = index + 1
 
-            val splitByWhitespace = line.split(Regex("\\s+"))
-            val firstWord = splitByWhitespace[0]
+            if (!line.startsWith(COMMENT_TOKEN) && line.isNotEmpty()) {
+                val lineNo = index + 1
 
-            if (firstWord == HEAD_TOKEN) {
-                if (initialHeadPos == null) {
-                    initialHeadPos = splitByWhitespace[1].toInt()
-                } else {
-                    error("Error at line ${lineNo}: conflicting starting head position")
-                }
-            } else {
-                val isInitialState = line.startsWith(START_TOKEN)
-                val withoutInitialState = line.removePrefix(START_TOKEN).trim()
+                val splitByWhitespace = line.split(Regex("\\s+"))
+                val firstWord = splitByWhitespace[0]
 
-                val splitByArrow = withoutInitialState.split(ARROW_TOKEN, limit = 2).map { string -> string.trim() }
-                val stateData = splitByArrow[0].split(Regex("\\s+"))
-                val stateIdentifier = stateData[0]
-                val stateType = stateData[1]
-
-                if (isInitialState) {
-                    if (initialState == null) {
-                        initialState = stateIdentifier
+                if (firstWord == HEAD_TOKEN) {
+                    if (initialHeadPos == null) {
+                        initialHeadPos = splitByWhitespace[1].toInt()
                     } else {
-                        error("Error at line ${lineNo}: conflicting starting state")
+                        error("Error at line ${lineNo}: conflicting starting head position")
                     }
-                }
-
-                if (stateType == RETURN_TOKEN) {
-                    val returnValue = stateData[2]
-                    states += ReturnState(stateIdentifier, returnValue)
                 } else {
-                    val transitionData = splitByArrow[1]
+                    val isInitialState = line.startsWith(START_TOKEN)
+                    val withoutInitialState = line.removePrefix(START_TOKEN).trim()
 
-                    if (stateType == READ_TOKEN) {
-                        val readTransitionsData = transitionData.substring(
-                                transitionData.indexOf(BLOCK_OPEN_TOKEN) + 1, transitionData.indexOf(BLOCK_CLOSE_TOKEN)
-                        ).split(TRANSITION_SEPARATOR_TOKEN).map { transition -> transition.trim() }
+                    val splitByArrow = withoutInitialState.split(ARROW_TOKEN, limit = 2).map { string -> string.trim() }
+                    val stateData = splitByArrow[0].split(Regex("\\s+"))
+                    val stateIdentifier = stateData[0]
+                    val stateType = stateData[1]
 
-                        val readTransitions = HashMap<Char, String>()
-
-                        readTransitionsData.forEach {
-                            readTransition ->
-                            val readTransitionParts = readTransition.split(ARROW_TOKEN).map { string -> string.trim() }
-                            val transitionOn = readTransitionParts[0]
-                            val transitionOnChar = when (transitionOn) {
-                                BLANK_TOKEN -> Tape.BLANK_CHAR
-                                ELSE_TOKEN  -> ReadState.WILDCARD
-                                else        -> if (transitionOn.length == 1) { transitionOn[0] } else { error("Error at line ${lineNo}: invalid read character \"${transitionOn}\"") }
-                            }
-
-                            val transitionTo = readTransitionParts[1]
-                            readTransitions[transitionOnChar] = transitionTo
-                        }
-
-                        states += ReadState(stateIdentifier, readTransitions)
-                    } else {
-                        if (stateType == WRITE_TOKEN) {
-                            val writeData = stateData[2]
-                            val writeCharacter = when (writeData) {
-                                BLANK_TOKEN -> Tape.BLANK_CHAR
-                                else -> if (writeData.length == 1) { writeData[0] } else { error("Error at line ${lineNo}: invalid write character \"${writeData}\"") }
-                            }
-
-                            states += WriteState(stateIdentifier, transitionData, writeCharacter)
+                    if (isInitialState) {
+                        if (initialState == null) {
+                            initialState = stateIdentifier
                         } else {
-                            states += when (stateType) {
-                                LEFT_TOKEN  -> MoveLeftState(stateIdentifier, transitionData)
-                                RIGHT_TOKEN -> MoveRightState(stateIdentifier, transitionData)
-                                NO_OP_TOKEN -> NoOpState(stateIdentifier, transitionData)
-                                else        -> error("Error at line ${lineNo}: invalid state type \"${stateType}\"")
+                            error("Error at line ${lineNo}: conflicting starting state")
+                        }
+                    }
+
+                    if (stateType == RETURN_TOKEN) {
+                        val returnValue = stateData[2]
+                        states += ReturnState(stateIdentifier, returnValue)
+                    } else {
+                        val transitionData = splitByArrow[1]
+
+                        if (stateType == READ_TOKEN) {
+                            val readTransitionsData = transitionData.substring(
+                                    transitionData.indexOf(BLOCK_OPEN_TOKEN) + 1, transitionData.indexOf(BLOCK_CLOSE_TOKEN)
+                            ).split(TRANSITION_SEPARATOR_TOKEN).map { transition -> transition.trim() }
+
+                            val readTransitions = HashMap<Char, String>()
+
+                            readTransitionsData.forEach { readTransition ->
+                                val readTransitionParts = readTransition.split(ARROW_TOKEN).map { string -> string.trim() }
+                                val transitionOn = readTransitionParts[0]
+                                val transitionOnChar = when (transitionOn) {
+                                    BLANK_TOKEN -> Tape.BLANK_CHAR
+                                    ELSE_TOKEN -> ReadState.WILDCARD
+                                    else -> if (transitionOn.length == 1) {
+                                        transitionOn[0]
+                                    } else {
+                                        error("Error at line ${lineNo}: invalid read character \"${transitionOn}\"")
+                                    }
+                                }
+
+                                val transitionTo = readTransitionParts[1]
+                                readTransitions[transitionOnChar] = transitionTo
+                            }
+
+                            states += ReadState(stateIdentifier, readTransitions)
+                        } else {
+                            if (stateType == WRITE_TOKEN) {
+                                val writeData = stateData[2]
+                                val writeCharacter = when (writeData) {
+                                    BLANK_TOKEN -> Tape.BLANK_CHAR
+                                    else -> if (writeData.length == 1) {
+                                        writeData[0]
+                                    } else {
+                                        error("Error at line ${lineNo}: invalid write character \"${writeData}\"")
+                                    }
+                                }
+
+                                states += WriteState(stateIdentifier, transitionData, writeCharacter)
+                            } else {
+                                states += when (stateType) {
+                                    LEFT_TOKEN -> MoveLeftState(stateIdentifier, transitionData)
+                                    RIGHT_TOKEN -> MoveRightState(stateIdentifier, transitionData)
+                                    NO_OP_TOKEN -> NoOpState(stateIdentifier, transitionData)
+                                    else -> error("Error at line ${lineNo}: invalid state type \"${stateType}\"")
+                                }
                             }
                         }
                     }
